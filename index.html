@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoveSpark Boxhead 🧟‍♀️💕</title>
+
+<!-- CodeMirror (JS syntax highlighting editor) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #ffe4e1 0%, #fce7f3 50%, #f3e8ff 100%);
+    min-height: 100vh;
+    color: #4a1942;
+}
+
+/* ── Header ── */
+header {
+    background: linear-gradient(90deg, #f472b6, #c084fc);
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 12px rgba(244,114,182,0.35);
+}
+header h1 { font-size: 1.3rem; font-weight: 800; letter-spacing: 0.02em; }
+header .suite-link {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+}
+
+/* ── Main layout ── */
+#app {
+    display: flex;
+    flex-direction: column;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 12px;
+    gap: 10px;
+}
+
+#game-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+/* ── Canvas ── */
+#canvas-wrap {
+    position: relative;
+    flex-shrink: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 0 3px #f9a8d4, 0 4px 24px rgba(244,114,182,0.3);
+}
+#gameCanvas { display: block; }
+
+/* Canvas overlay (idle / gameover screens) */
+#canvas-overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(255,228,230,0.88);
+    backdrop-filter: blur(4px);
+    gap: 14px;
+    transition: opacity 0.3s;
+}
+#canvas-overlay.hidden { opacity: 0; pointer-events: none; }
+#canvas-overlay h2 { font-size: 2rem; font-weight: 900; color: #be185d; }
+#canvas-overlay p  { font-size: 1rem; color: #9d174d; max-width: 340px; text-align: center; }
+#canvas-overlay .over-score { font-size: 1.5rem; font-weight: 800; color: #c026d3; }
+
+/* Screen shake */
+@keyframes shake {
+    0%,100% { transform: translate(0,0); }
+    20%  { transform: translate(-5px, 4px); }
+    40%  { transform: translate(5px, -4px); }
+    60%  { transform: translate(-3px, 2px); }
+    80%  { transform: translate(3px, -2px); }
+}
+.shaking { animation: shake 0.3s ease; }
+
+/* ── Stats panel ── */
+#stats-panel {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 8px rgba(244,114,182,0.12);
+}
+.stat-card h3 {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #be185d;
+    margin-bottom: 6px;
+}
+
+/* Health hearts */
+#hearts { font-size: 1.1rem; letter-spacing: 2px; }
+#hp-text { font-size: 0.8rem; color: #9d174d; margin-top: 2px; }
+
+/* Stat rows */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+    font-size: 0.9rem;
+}
+.stat-row .label { color: #9d174d; }
+.stat-row .value { font-weight: 700; color: #be185d; }
+
+/* ── Buttons ── */
+.btn {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+.btn:hover  { transform: translateY(-1px); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+    background: linear-gradient(135deg, #f472b6, #c084fc);
+    color: white;
+    box-shadow: 0 3px 10px rgba(244,114,182,0.4);
+}
+.btn-secondary {
+    background: white;
+    color: #be185d;
+    border: 2px solid #fecdd3;
+}
+.btn-small {
+    font-size: 0.78rem;
+    padding: 5px 12px;
+}
+
+#ctrl-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Bot status */
+#bot-status {
+    background: white;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    border-left: 4px solid #f472b6;
+}
+#bot-status .status-label { color: #9d174d; font-weight: 600; }
+#bot-status .status-ok  { color: #16a34a; }
+#bot-status .status-err { color: #dc2626; font-family: monospace; word-break: break-all; }
+#bot-status .status-idle { color: #9d174d; }
+
+/* ── Leaderboard modal ── */
+.modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(249,168,212,0.5);
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+}
+.modal-backdrop.hidden { display: none; }
+.modal-box {
+    background: white;
+    border-radius: 20px;
+    padding: 28px 32px;
+    width: 500px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 40px rgba(244,114,182,0.3);
+}
+.modal-box h2 { font-size: 1.4rem; color: #be185d; margin-bottom: 16px; }
+.lb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.lb-table th { color: #be185d; text-align: left; padding: 6px 8px; border-bottom: 2px solid #fecdd3; }
+.lb-table td { padding: 6px 8px; border-bottom: 1px solid #fce7f3; }
+.lb-table tr:first-child td { color: #f59e0b; font-weight: 700; }
+.lb-empty { color: #9d174d; text-align: center; padding: 20px; }
+
+/* Name input for score submission */
+.name-input {
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 8px 12px;
+    border: 2px solid #fecdd3;
+    border-radius: 50px;
+    outline: none;
+    width: 100%;
+    margin-bottom: 10px;
+}
+.name-input:focus { border-color: #f472b6; }
+
+/* ── Editor section ── */
+#editor-section {
+    background: white;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(244,114,182,0.12);
+}
+#editor-header {
+    background: linear-gradient(90deg, #fce7f3, #f3e8ff);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    border-bottom: 2px solid #fecdd3;
+}
+#editor-header .editor-title { font-weight: 700; color: #be185d; flex: 1; }
+#editor-header .hint { font-size: 0.72rem; color: #9d174d; }
+
+/* CodeMirror customizations */
+.CodeMirror {
+    height: 240px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+/* Fallback textarea */
+#code-editor-fallback {
+    width: 100%;
+    height: 240px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 13px;
+    padding: 12px;
+    background: #282a36;
+    color: #f8f8f2;
+    border: none;
+    resize: vertical;
+    outline: none;
+    display: block;
+}
+
+/* ── Footer ── */
+footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #9d174d;
+    padding: 10px;
+    opacity: 0.7;
+}
+
+/* ── Responsive ── */
+@media (max-width: 720px) {
+    #game-row { flex-direction: column; }
+    #gameCanvas { width: 100%; height: auto; }
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>🩷 LoveSpark Boxhead 🧟‍♀️</h1>
+    <span class="suite-link">Part of the LoveSpark Suite ✨</span>
+</header>
+
+<!-- Leaderboard Modal -->
+<div id="lb-modal" class="modal-backdrop hidden">
+    <div class="modal-box">
+        <h2>🏆 Leaderboard</h2>
+        <div id="lb-content"><p class="lb-empty">No scores yet — be the first! 🩷</p></div>
+        <br>
+        <button class="btn btn-secondary btn-small" onclick="document.getElementById('lb-modal').classList.add('hidden')">Close</button>
+    </div>
+</div>
+
+<!-- Score Submit Modal -->
+<div id="submit-modal" class="modal-backdrop hidden">
+    <div class="modal-box">
+        <h2>📝 Save Your Score!</h2>
+        <p style="margin-bottom:12px;color:#9d174d">Enter your name to save to the leaderboard:</p>
+        <input id="player-name" class="name-input" type="text" placeholder="Your name 🩷" maxlength="20">
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="submitScore()">Save Score 💾</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('submit-modal').classList.add('hidden')">Skip</button>
+        </div>
+    </div>
+</div>
+
+<div id="app">
+    <div id="game-row">
+
+        <!-- Game Canvas -->
+        <div id="canvas-wrap">
+            <canvas id="gameCanvas" width="540" height="540"></canvas>
+
+            <div id="canvas-overlay">
+                <h2 id="overlay-title">LoveSpark Boxhead</h2>
+                <p id="overlay-msg">Write your bot code below, then click <strong>Start!</strong> 🩷</p>
+                <div id="overlay-score" class="over-score" style="display:none"></div>
+                <button id="overlay-btn" class="btn btn-primary" onclick="handleOverlayBtn()">▶ Start Game</button>
+            </div>
+        </div>
+
+        <!-- Stats Panel -->
+        <div id="stats-panel">
+
+            <div class="stat-card">
+                <h3>❤️ Health</h3>
+                <div id="hearts">❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️</div>
+                <div id="hp-text">100 / 100</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>📊 Stats</h3>
+                <div class="stat-row"><span class="label">🌊 Wave</span><span class="value" id="stat-wave">—</span></div>
+                <div class="stat-row"><span class="label">⭐ Score</span><span class="value" id="stat-score">0</span></div>
+                <div class="stat-row"><span class="label">💀 Kills</span><span class="value" id="stat-kills">0</span></div>
+                <div class="stat-row"><span class="label">⏱ Time</span><span class="value" id="stat-time">0:00</span></div>
+            </div>
+
+            <div class="stat-card">
+                <h3>🔫 Weapon</h3>
+                <div class="stat-row"><span class="label">Type</span><span class="value" id="stat-weapon">Pistol</span></div>
+                <div class="stat-row"><span class="label">Ammo</span><span class="value" id="stat-ammo">12 / 12</span></div>
+            </div>
+
+            <div id="ctrl-btns">
+                <button class="btn btn-primary" id="start-btn" onclick="handleStartBtn()">▶ Start</button>
+                <button class="btn btn-secondary" onclick="resetGame(); showIdleOverlay()">↺ Reset</button>
+                <button class="btn btn-secondary btn-small" onclick="showLeaderboard()">🏆 Board</button>
+            </div>
+
+            <div id="bot-status">
+                <div class="status-label">🤖 Bot Status</div>
+                <div id="bot-status-text" class="status-idle">Waiting to start…</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Code Editor -->
+    <div id="editor-section">
+        <div id="editor-header">
+            <span class="editor-title">🤖 Your Bot Code</span>
+            <span class="hint">Ctrl+Enter = Apply &amp; Start</span>
+            <button class="btn btn-primary btn-small" onclick="applyAndStart()">▶ Apply &amp; Start</button>
+            <button class="btn btn-secondary btn-small" onclick="saveCode()">💾 Save</button>
+            <button class="btn btn-secondary btn-small" onclick="resetCode()">↺ Default</button>
+        </div>
+        <!-- CodeMirror replaces this textarea; shown as fallback -->
+        <textarea id="code-editor-fallback"></textarea>
+    </div>
+
+    <footer>
+        🩷 LoveSpark Suite &nbsp;|&nbsp; Built for neurodivergent coders &nbsp;|&nbsp;
+        <a href="#" style="color:#be185d">Anti Brainrot</a> &nbsp;·&nbsp;
+        <a href="#" style="color:#be185d">Dreamy Garden</a>
+    </footer>
+</div>
+
+<!-- CodeMirror scripts -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+
+<!-- Game Engine -->
+<script src="game.js"></script>
+</body>
+</html>
