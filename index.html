@@ -210,6 +210,21 @@ header .suite-link {
 }
 .name-input:focus { border-color: #f472b6; }
 
+/* Seed input */
+.seed-input {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    padding: 4px 8px;
+    border: 2px solid #fecdd3;
+    border-radius: 8px;
+    outline: none;
+    width: 120px;
+    background: #fff5f7;
+    color: #4a1942;
+    text-align: right;
+}
+.seed-input:focus { border-color: #f472b6; }
+
 /* ── Editor section ── */
 #editor-section {
     background: white;
@@ -338,6 +353,19 @@ footer {
                 <button class="btn btn-primary" id="start-btn" onclick="handleStartBtn()">▶ Start</button>
                 <button class="btn btn-secondary" onclick="resetGame(); showIdleOverlay()">↺ Reset</button>
                 <button class="btn btn-secondary btn-small" onclick="showLeaderboard()">🏆 Board</button>
+            </div>
+
+            <div class="stat-card">
+                <h3>🎲 Seed & Replay</h3>
+                <div class="stat-row">
+                    <span class="label">Seed</span>
+                    <input id="seed-input" type="text" class="seed-input" placeholder="Random" spellcheck="false" autocomplete="off">
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+                    <button class="btn btn-secondary btn-small" onclick="handleNewSeed()">🎲 New Seed</button>
+                    <button class="btn btn-secondary btn-small" onclick="handleRerunSeed()">🔄 Rerun</button>
+                    <button class="btn btn-secondary btn-small" onclick="handleExportEpisode()" id="export-btn">📦 Export</button>
+                </div>
             </div>
 
             <div id="bot-status">

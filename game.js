@@ -33,6 +33,51 @@ const MOTIVATIONAL = [
     'Incredible! 🌟', 'Boss vibes! 👑',
 ];
 
+// ─── Seeded PRNG ────────────────────────────────────────────────────────────
+
+function makeRng(seed) {
+    let state = seed | 0 || 1;
+    return function rng() {
+        state ^= state << 13;
+        state ^= state >>> 17;
+        state ^= state << 5;
+        return (state >>> 0) / 4294967296;
+    };
+}
+
+function newSeed() {
+    return (Math.random() * 4294967296) >>> 0;
+}
+
+// ─── Bot hash ───────────────────────────────────────────────────────────────
+
+async function computeBotHash(code) {
+    const trimmed = code.replace(/\s+/g, ' ').trim();
+    try {
+        const buf  = new TextEncoder().encode(trimmed);
+        const hash = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < trimmed.length; i++) {
+            h ^= trimmed.charCodeAt(i);
+            h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    }
+}
+
+// ─── Episode event logger ───────────────────────────────────────────────────
+
+function logEpisodeEvent(type, data) {
+    s.episode.events.push({
+        f: s.episodeFrame,
+        t: Math.round(s.time * 1000) / 1000,
+        type,
+        ...data,
+    });
+}
+
 const DEFAULT_CODE = `/**
  * 🩷 Your bot AI — edit me!
  * Return one of:
@@ -121,7 +166,25 @@ function resetGame() {
         // Explore wander target
         exploreTarget: null,
         flashTimer: 0,  // screen damage flash
+
+        // Seeded PRNG
+        seed: 0,
+        rng:  null,
+
+        // Health respawn (game-tick timer, replaces setTimeout)
+        healthRespawnTimer: -1,
+        healthRespawnX: 0,
+        healthRespawnY: 0,
+
+        // Episode trace
+        episode: {
+            meta:   { seed: 0, botHash: '', startedAt: '' },
+            frames: [],
+            events: [],
+        },
+        episodeFrame: 0,
     };
+    s.rng = makeRng(1); // placeholder, overwritten by startGame
 }
 
 // ─── Item placement ──────────────────────────────────────────────────────────
@@ -138,7 +201,7 @@ function spawnStartItems() {
         { gx:17, gy:10, type:'health'  },
     ];
     for (const p of placements) {
-        s.items.push({ x: p.gx * TILE + TILE/2, y: p.gy * TILE + TILE/2, type: p.type, pulse: Math.random()*Math.PI*2 });
+        s.items.push({ x: p.gx * TILE + TILE/2, y: p.gy * TILE + TILE/2, type: p.type, pulse: s.rng()*Math.PI*2 });
     }
 }
 
@@ -152,6 +215,7 @@ function startNextWave() {
     s.spawnInterval = Math.max(0.4, 1.5 - s.wave * 0.08);
     s.spawnTimer    = 0;
     s.waveDelay     = -1; // no longer in delay
+    logEpisodeEvent('wave_start', { wave: s.wave });
     showMsg(`Wave ${s.wave}! 🌊`, W/2, 80, '#c026d3', 2.5);
     if (s.wave % 5 === 0) showMsg('👑 BOSS WAVE!', W/2, 110, '#dc2626', 2.5);
 }
@@ -166,16 +230,16 @@ function maybeSpawnZombie(dt) {
 
 function spawnZombie() {
     // Spawn along the inner edge of the wall
-    const side = Math.floor(Math.random() * 4);
+    const side = Math.floor(s.rng() * 4);
     const pad  = WALL + 8;
     let x, y;
-    if (side === 0) { x = pad + Math.random()*(W-pad*2); y = pad; }
-    else if (side===1) { x = W-pad; y = pad + Math.random()*(H-pad*2); }
-    else if (side===2) { x = pad + Math.random()*(W-pad*2); y = H-pad; }
-    else              { x = pad;   y = pad + Math.random()*(H-pad*2); }
+    if (side === 0) { x = pad + s.rng()*(W-pad*2); y = pad; }
+    else if (side===1) { x = W-pad; y = pad + s.rng()*(H-pad*2); }
+    else if (side===2) { x = pad + s.rng()*(W-pad*2); y = H-pad; }
+    else              { x = pad;   y = pad + s.rng()*(H-pad*2); }
 
     const isBoss = s.wave % 5 === 0 && s.waveSpawned === 0;
-    const isFast = !isBoss && Math.random() > 0.65;
+    const isFast = !isBoss && s.rng() > 0.65;
     const hp     = (30 + s.wave * 5) * (isBoss ? 3 : 1);
     const spd    = (isBoss ? 45 : isFast ? 90 : 55) + s.wave * 3;
 
@@ -187,7 +251,7 @@ function spawnZombie() {
         damage: isBoss ? 20 : 10,
         type:   isBoss ? 'boss' : isFast ? 'fast' : 'normal',
         color:  isBoss ? '#f472b6' : isFast ? '#86efac' : '#c4b5fd',
-        wobble: Math.random()*Math.PI*2,
+        wobble: s.rng()*Math.PI*2,
         hitFlash: 0,
     });
     s.waveSpawned++;
@@ -279,7 +343,7 @@ function applyMovement(dt) {
                 dx = ni.x - p.x; dy = ni.y - p.y;
             } else {
                 if (!s.exploreTarget || Math.hypot(s.exploreTarget.x-p.x, s.exploreTarget.y-p.y)<24) {
-                    s.exploreTarget = { x: WALL+Math.random()*(W-WALL*2), y: WALL+Math.random()*(H-WALL*2) };
+                    s.exploreTarget = { x: WALL+s.rng()*(W-WALL*2), y: WALL+s.rng()*(H-WALL*2) };
                 }
                 dx = s.exploreTarget.x - p.x;
                 dy = s.exploreTarget.y - p.y;
@@ -320,7 +384,7 @@ function doShoot() {
     p.facing = baseAngle;
 
     for (let i = 0; i < wp.pellets; i++) {
-        const angle = baseAngle + (Math.random()-0.5)*wp.spread;
+        const angle = baseAngle + (s.rng()-0.5)*wp.spread;
         s.bullets.push({
             x: p.x, y: p.y,
             vx: Math.cos(angle)*wp.speed,
@@ -345,18 +409,20 @@ function doPickup() {
 
     if (item.type === 'health') {
         p.health = Math.min(p.maxHealth, p.health + 30);
+        logEpisodeEvent('pickup_health', { amount: 30 });
         spawnParticles(item.x, item.y, '#ef4444', 10, 0.5);
         showMsg('+30 HP 💖', item.x, item.y - 20, '#ef4444', 1.2);
     } else {
         p.weapon = item.type;
         p.ammo   = WEAPONS[item.type].maxAmmo;
         p.maxAmmo= WEAPONS[item.type].maxAmmo;
+        logEpisodeEvent('pickup_weapon', { weapon: item.type });
         spawnParticles(item.x, item.y, '#c084fc', 8, 0.4);
         showMsg(`Got ${WEAPONS[item.type].label}!`, item.x, item.y-20, '#c084fc', 1.2);
     }
     s.items.splice(idx, 1);
     // Respawn another health pack somewhere after pickup
-    if (item.type === 'health' && Math.random() > 0.4) scheduleHealthRespawn();
+    if (item.type === 'health' && s.rng() > 0.4) scheduleHealthRespawn();
 }
 
 function doReload() {
@@ -367,12 +433,9 @@ function doReload() {
 }
 
 function scheduleHealthRespawn() {
-    setTimeout(() => {
-        if (s.phase !== 'playing') return;
-        const x = WALL*2 + Math.random()*(W - WALL*4);
-        const y = WALL*2 + Math.random()*(H - WALL*4);
-        s.items.push({ x, y, type:'health', pulse:0 });
-    }, 8000 + Math.random()*5000);
+    s.healthRespawnTimer = 8 + s.rng() * 5;
+    s.healthRespawnX = WALL * 2 + s.rng() * (W - WALL * 4);
+    s.healthRespawnY = WALL * 2 + s.rng() * (H - WALL * 4);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -446,9 +509,35 @@ function updateGame(dt) {
         }
     }
 
+    // Health respawn timer
+    if (s.healthRespawnTimer > 0) {
+        s.healthRespawnTimer -= dt;
+        if (s.healthRespawnTimer <= 0) {
+            s.healthRespawnTimer = -1;
+            s.items.push({ x: s.healthRespawnX, y: s.healthRespawnY, type: 'health', pulse: 0 });
+        }
+    }
+
     // Bot
     s.botFrame++;
-    if (s.botFrame % BOT_INTERVAL === 0) runBot();
+    if (s.botFrame % BOT_INTERVAL === 0) {
+        runBot();
+        // Record episode frame at bot tick rate
+        s.episode.frames.push({
+            f: s.episodeFrame++,
+            t: Math.round(s.time * 1000) / 1000,
+            px: Math.round(p.x * 10) / 10,
+            py: Math.round(p.y * 10) / 10,
+            hp: p.health,
+            ammo: p.ammo,
+            weapon: p.weapon,
+            wave: s.wave,
+            score: s.score,
+            kills: s.kills,
+            zCount: s.zombies.length,
+            action: s.botMoveDir || 'none',
+        });
+    }
     applyMovement(dt);
 
     // Bullets
@@ -489,6 +578,7 @@ function updateGame(dt) {
             p.health    -= z.damage;
             p.invincible = 0.6;
             s.flashTimer = 0.2;
+            logEpisodeEvent('player_hit', { damage: z.damage, hpAfter: p.health });
             spawnParticles(p.x, p.y, '#fda4af', 8, 0.4);
             if (p.health <= 0) { p.health = 0; gameOver(); return; }
         }
@@ -520,14 +610,15 @@ function killZombie(idx) {
     s.kills++;
     s.score  += s.wave * 10;
     s.waveAlive--;
+    logEpisodeEvent('zombie_kill', { zType: z.type, score: s.wave * 10 });
     spawnParticles(z.x, z.y, z.color, 14, 0.6);
     spawnParticles(z.x, z.y, '#fff', 6, 0.3);
     // Random motivational message
-    if (Math.random() > 0.6) showMsg(MOTIVATIONAL[Math.floor(Math.random()*MOTIVATIONAL.length)], z.x, z.y - 20, '#c026d3', 1.2);
+    if (s.rng() > 0.6) showMsg(MOTIVATIONAL[Math.floor(s.rng()*MOTIVATIONAL.length)], z.x, z.y - 20, '#c026d3', 1.2);
     // Rare item drop
-    if (Math.random() > 0.75) {
+    if (s.rng() > 0.75) {
         const types = ['health', 'pistol', 'shotgun'];
-        s.items.push({ x:z.x, y:z.y, type:types[Math.floor(Math.random()*types.length)], pulse:0 });
+        s.items.push({ x:z.x, y:z.y, type:types[Math.floor(s.rng()*types.length)], pulse:0 });
     }
     s.zombies.splice(idx, 1);
 }
@@ -781,6 +872,7 @@ function updateBotStatus(type, msg) {
 
 function gameOver() {
     s.phase = 'gameover';
+    logEpisodeEvent('game_over', { score: s.score, wave: s.wave, kills: s.kills, time: Math.round(s.time * 1000) / 1000 });
 
     const title = document.getElementById('overlay-title');
     const msg   = document.getElementById('overlay-msg');
@@ -809,26 +901,68 @@ function showIdleOverlay() {
     updateBotStatus('idle', 'Waiting to start…');
 }
 
-function startGame() {
+function startGame(seed) {
     resetGame();
+    s.seed = seed != null ? (seed >>> 0) : newSeed();
+    s.rng  = makeRng(s.seed);
     spawnStartItems();
     compileBotCode();
     s.phase = 'playing';
+
+    // Episode meta
+    s.episode.meta = {
+        seed:      s.seed,
+        botHash:   '',
+        startedAt: new Date().toISOString(),
+    };
+    computeBotHash(getEditorCode()).then(h => { s.episode.meta.botHash = h; });
+
+    // Update seed display
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) seedInput.value = s.seed;
+
     document.getElementById('canvas-overlay').classList.add('hidden');
     updateBotStatus('ok', '✅ Bot loaded');
 }
 
+function parseSeedInput() {
+    const el = document.getElementById('seed-input');
+    if (!el || !el.value.trim()) return undefined;
+    const val = parseInt(el.value, 10);
+    return isNaN(val) ? undefined : val;
+}
+
 function handleOverlayBtn() {
-    if (s.phase === 'gameover' || s.phase === 'idle') startGame();
+    if (s.phase === 'gameover' || s.phase === 'idle') startGame(parseSeedInput());
 }
 
 function handleStartBtn() {
-    startGame();
+    startGame(parseSeedInput());
 }
 
 function applyAndStart() {
     saveCode();
+    startGame(parseSeedInput());
+}
+
+function handleNewSeed() {
     startGame();
+}
+
+function handleRerunSeed() {
+    startGame(s.seed || newSeed());
+}
+
+function handleExportEpisode() {
+    if (!s.episode || s.episode.frames.length === 0) return;
+    const json = JSON.stringify(s.episode, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `episode-${s.seed}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ─── Bot compilation ─────────────────────────────────────────────────────────
