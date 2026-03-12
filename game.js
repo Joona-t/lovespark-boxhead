@@ -991,6 +991,12 @@ function compileBotCode() {
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 const LB_KEY = 'lsb_scores';
 
 function getScores() {
@@ -1011,18 +1017,30 @@ function showLeaderboard() {
     const modal  = document.getElementById('lb-modal');
     const content= document.getElementById('lb-content');
 
+    content.textContent = '';
     if (!scores.length) {
-        content.innerHTML = '<p class="lb-empty">No scores yet — be the first! 🩷</p>';
+        const p = document.createElement('p');
+        p.className = 'lb-empty';
+        p.textContent = 'No scores yet \u2014 be the first! \ud83e\udd77';
+        content.appendChild(p);
     } else {
-        const medals = ['🥇','🥈','🥉'];
-        const rows   = scores.map((e,i) =>
-            `<tr><td>${medals[i]||i+1}</td><td>${e.name}</td><td>${e.score.toLocaleString()}</td><td>${e.wave}</td><td>${e.kills}</td><td>${Math.floor(e.time/60)}:${(e.time%60).toString().padStart(2,'0')}</td><td>${e.date}</td></tr>`
-        ).join('');
-        content.innerHTML =
-            `<table class="lb-table">
-                <thead><tr><th>#</th><th>Name</th><th>Score</th><th>Wave</th><th>Kills</th><th>Time</th><th>Date</th></tr></thead>
-                <tbody>${rows}</tbody>
-            </table>`;
+        const medals = ['\ud83e\udd47','\ud83e\udd48','\ud83e\udd49'];
+        const table = document.createElement('table');
+        table.className = 'lb-table';
+        const thead = document.createElement('thead');
+        const hr = document.createElement('tr');
+        ['#','Name','Score','Wave','Kills','Time','Date'].forEach(t => { const th = document.createElement('th'); th.textContent = t; hr.appendChild(th); });
+        thead.appendChild(hr);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        scores.forEach((e, i) => {
+            const tr = document.createElement('tr');
+            const cells = [medals[i] || i + 1, e.name, e.score.toLocaleString(), e.wave, e.kills, Math.floor(e.time/60) + ':' + (e.time%60).toString().padStart(2,'0'), e.date];
+            cells.forEach(val => { const td = document.createElement('td'); td.textContent = String(val); tr.appendChild(td); });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        content.appendChild(table);
     }
     modal.classList.remove('hidden');
 }
